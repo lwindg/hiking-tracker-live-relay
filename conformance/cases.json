@@ -1,0 +1,1092 @@
+{
+  "about": "Live report v1 relay conformance (contracts/live-report-v1.md §5). Run by LiveRelayConformanceTest against the in-memory relay and by run.mjs against any URL. Placeholders: {mb}/{mb2} fresh mailbox ids, {slot}/{slot2} fresh slot ids, {dev}/{dev2}/{dev:N} fresh device ids, all per case; a string that is exactly {now}, {now+N}, {now-N} or {i} becomes a number ({i} is the 1-based repeat index); {rep:X:N} expands to N copies of X. 'advance' (and 'advanceAfter', after each repeat) moves the in-memory clock or makes run.mjs wait. Cases marked virtualClockOnly need time travel and run only in-memory. 'json' matches partially: object keys listed must match, arrays must have the same length, '$num' matches any number.",
+  "cases": [
+    {
+      "name": "health names the protocol and version",
+      "steps": [
+        {
+          "method": "GET",
+          "path": "/v1/health",
+          "expect": {
+            "status": 200,
+            "json": {
+              "protocol": "ht-live",
+              "versions": [
+                1
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "an unknown mailbox reads as empty with CORS",
+      "steps": [
+        {
+          "method": "GET",
+          "path": "/v1/m/{mb}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "devices": []
+            },
+            "headers": {
+              "access-control-allow-origin": "*"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a state is stored and read back",
+      "steps": [
+        {
+          "method": "POST",
+          "path": "/v1/m/{mb}/{slot}/{dev}",
+          "body": {
+            "expiresAt": "{now+86400}",
+            "items": [
+              {
+                "v": 1,
+                "kind": "state",
+                "epoch": 0,
+                "seq": 0,
+                "n": "AAAAAAAAAAAAAAAA",
+                "c": "c3RhdGU"
+              }
+            ]
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "receivedAt": "$num"
+            }
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/v1/m/{mb}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "devices": [
+                {
+                  "slotId": "{slot}",
+                  "deviceId": "{dev}",
+                  "receivedAt": "$num",
+                  "state": {
+                    "v": 1,
+                    "kind": "state",
+                    "epoch": 0,
+                    "seq": 0,
+                    "n": "AAAAAAAAAAAAAAAA",
+                    "c": "c3RhdGU"
+                  },
+                  "chunks": []
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a newer state replaces the older one",
+      "steps": [
+        {
+          "method": "POST",
+          "path": "/v1/m/{mb}/{slot}/{dev}",
+          "body": {
+            "expiresAt": "{now+86400}",
+            "items": [
+              {
+                "v": 1,
+                "kind": "state",
+                "epoch": 0,
+                "seq": 0,
+                "n": "AAAAAAAAAAAAAAAA",
+                "c": "Zmlyc3Q"
+              }
+            ]
+          },
+          "expect": {
+            "status": 200
+          }
+        },
+        {
+          "advance": 16
+        },
+        {
+          "method": "POST",
+          "path": "/v1/m/{mb}/{slot}/{dev}",
+          "body": {
+            "expiresAt": "{now+86400}",
+            "items": [
+              {
+                "v": 1,
+                "kind": "state",
+                "epoch": 0,
+                "seq": 0,
+                "n": "BBBBBBBBBBBBBBBB",
+                "c": "c2Vjb25k"
+              }
+            ]
+          },
+          "expect": {
+            "status": 200
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/v1/m/{mb}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "devices": [
+                {
+                  "state": {
+                    "n": "BBBBBBBBBBBBBBBB",
+                    "c": "c2Vjb25k"
+                  },
+                  "chunks": []
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "the same chunk sequence overwrites and chunks come back in order",
+      "steps": [
+        {
+          "method": "POST",
+          "path": "/v1/m/{mb}/{slot}/{dev}",
+          "body": {
+            "expiresAt": "{now+86400}",
+            "items": [
+              {
+                "v": 1,
+                "kind": "chunk",
+                "epoch": 0,
+                "seq": 2,
+                "n": "AAAAAAAAAAAAAAAA",
+                "c": "dHdv"
+              },
+              {
+                "v": 1,
+                "kind": "chunk",
+                "epoch": 0,
+                "seq": 1,
+                "n": "AAAAAAAAAAAAAAAA",
+                "c": "b2xk"
+              }
+            ]
+          },
+          "expect": {
+            "status": 200
+          }
+        },
+        {
+          "advance": 16
+        },
+        {
+          "method": "POST",
+          "path": "/v1/m/{mb}/{slot}/{dev}",
+          "body": {
+            "expiresAt": "{now+86400}",
+            "items": [
+              {
+                "v": 1,
+                "kind": "chunk",
+                "epoch": 0,
+                "seq": 1,
+                "n": "AAAAAAAAAAAAAAAA",
+                "c": "bmV3"
+              }
+            ]
+          },
+          "expect": {
+            "status": 200
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/v1/m/{mb}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "devices": [
+                {
+                  "state": null,
+                  "chunks": [
+                    {
+                      "seq": 1,
+                      "c": "bmV3"
+                    },
+                    {
+                      "seq": 2,
+                      "c": "dHdv"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a later recorded day drops the earlier day and an earlier item is ignored",
+      "steps": [
+        {
+          "method": "POST",
+          "path": "/v1/m/{mb}/{slot}/{dev}",
+          "body": {
+            "expiresAt": "{now+86400}",
+            "items": [
+              {
+                "v": 1,
+                "kind": "state",
+                "epoch": 0,
+                "seq": 0,
+                "n": "AAAAAAAAAAAAAAAA",
+                "c": "ZGF5MA"
+              },
+              {
+                "v": 1,
+                "kind": "chunk",
+                "epoch": 0,
+                "seq": 1,
+                "n": "AAAAAAAAAAAAAAAA",
+                "c": "ZGF5MA"
+              }
+            ]
+          },
+          "expect": {
+            "status": 200
+          }
+        },
+        {
+          "advance": 16
+        },
+        {
+          "method": "POST",
+          "path": "/v1/m/{mb}/{slot}/{dev}",
+          "body": {
+            "expiresAt": "{now+86400}",
+            "items": [
+              {
+                "v": 1,
+                "kind": "chunk",
+                "epoch": 1,
+                "seq": 1,
+                "n": "AAAAAAAAAAAAAAAA",
+                "c": "ZGF5MQ"
+              }
+            ]
+          },
+          "expect": {
+            "status": 200
+          }
+        },
+        {
+          "advance": 16
+        },
+        {
+          "method": "POST",
+          "path": "/v1/m/{mb}/{slot}/{dev}",
+          "body": {
+            "expiresAt": "{now+86400}",
+            "items": [
+              {
+                "v": 1,
+                "kind": "chunk",
+                "epoch": 0,
+                "seq": 2,
+                "n": "AAAAAAAAAAAAAAAA",
+                "c": "bGF0ZQ"
+              }
+            ]
+          },
+          "expect": {
+            "status": 200
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/v1/m/{mb}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "devices": [
+                {
+                  "state": null,
+                  "chunks": [
+                    {
+                      "epoch": 1,
+                      "seq": 1,
+                      "c": "ZGF5MQ"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "two devices of one mailbox are kept apart",
+      "steps": [
+        {
+          "method": "POST",
+          "path": "/v1/m/{mb}/{slot}/{dev}",
+          "body": {
+            "expiresAt": "{now+86400}",
+            "items": [
+              {
+                "v": 1,
+                "kind": "state",
+                "epoch": 0,
+                "seq": 0,
+                "n": "AAAAAAAAAAAAAAAA",
+                "c": "b25l"
+              }
+            ]
+          },
+          "expect": {
+            "status": 200
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/v1/m/{mb}/{slot2}/{dev2}",
+          "body": {
+            "expiresAt": "{now+86400}",
+            "items": [
+              {
+                "v": 1,
+                "kind": "state",
+                "epoch": 0,
+                "seq": 0,
+                "n": "AAAAAAAAAAAAAAAA",
+                "c": "dHdv"
+              }
+            ]
+          },
+          "expect": {
+            "status": 200
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/v1/m/{mb2}/{slot}/{dev:3}",
+          "body": {
+            "expiresAt": "{now+86400}",
+            "items": [
+              {
+                "v": 1,
+                "kind": "state",
+                "epoch": 0,
+                "seq": 0,
+                "n": "AAAAAAAAAAAAAAAA",
+                "c": "b3RoZXI"
+              }
+            ]
+          },
+          "expect": {
+            "status": 200
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/v1/m/{mb}",
+          "expect": {
+            "status": 200,
+            "jsonDevicesUnordered": [
+              {
+                "slotId": "{slot}",
+                "deviceId": "{dev}",
+                "state": {
+                  "c": "b25l"
+                }
+              },
+              {
+                "slotId": "{slot2}",
+                "deviceId": "{dev2}",
+                "state": {
+                  "c": "dHdv"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "one device may post at most every 15 seconds",
+      "steps": [
+        {
+          "method": "POST",
+          "path": "/v1/m/{mb}/{slot}/{dev}",
+          "body": {
+            "expiresAt": "{now+86400}",
+            "items": [
+              {
+                "v": 1,
+                "kind": "state",
+                "epoch": 0,
+                "seq": 0,
+                "n": "AAAAAAAAAAAAAAAA",
+                "c": "YQ"
+              }
+            ]
+          },
+          "expect": {
+            "status": 200
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/v1/m/{mb}/{slot}/{dev}",
+          "body": {
+            "expiresAt": "{now+86400}",
+            "items": [
+              {
+                "v": 1,
+                "kind": "state",
+                "epoch": 0,
+                "seq": 0,
+                "n": "AAAAAAAAAAAAAAAA",
+                "c": "Yg"
+              }
+            ]
+          },
+          "expect": {
+            "status": 429
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/v1/m/{mb}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "devices": [
+                {
+                  "state": {
+                    "c": "YQ"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "an expiry already in the past is gone",
+      "steps": [
+        {
+          "method": "POST",
+          "path": "/v1/m/{mb}/{slot}/{dev}",
+          "body": {
+            "expiresAt": "{now-60}",
+            "items": [
+              {
+                "v": 1,
+                "kind": "state",
+                "epoch": 0,
+                "seq": 0,
+                "n": "AAAAAAAAAAAAAAAA",
+                "c": "YQ"
+              }
+            ]
+          },
+          "expect": {
+            "status": 410
+          }
+        }
+      ]
+    },
+    {
+      "name": "malformed requests are refused",
+      "steps": [
+        {
+          "method": "POST",
+          "path": "/v1/m/short/{slot}/{dev}",
+          "body": {
+            "expiresAt": "{now+86400}",
+            "items": [
+              {
+                "v": 1,
+                "kind": "state",
+                "epoch": 0,
+                "seq": 0,
+                "n": "AAAAAAAAAAAAAAAA",
+                "c": "YQ"
+              }
+            ]
+          },
+          "expect": {
+            "status": 400
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/v1/m/{mb}/{slot}/{dev:2}",
+          "rawBody": "{not json",
+          "expect": {
+            "status": 400
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/v1/m/{mb}/{slot}/{dev:3}",
+          "body": {
+            "expiresAt": "{now+86400}",
+            "items": []
+          },
+          "expect": {
+            "status": 400
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/v1/m/{mb}/{slot}/{dev:4}",
+          "body": {
+            "expiresAt": "{now+86400}",
+            "items": [
+              {
+                "v": 2,
+                "kind": "state",
+                "epoch": 0,
+                "seq": 0,
+                "n": "AAAAAAAAAAAAAAAA",
+                "c": "YQ"
+              }
+            ]
+          },
+          "expect": {
+            "status": 400
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/v1/m/{mb}/{slot}/{dev:5}",
+          "body": {
+            "expiresAt": "{now+86400}",
+            "items": [
+              {
+                "v": 1,
+                "kind": "other",
+                "epoch": 0,
+                "seq": 0,
+                "n": "AAAAAAAAAAAAAAAA",
+                "c": "YQ"
+              }
+            ]
+          },
+          "expect": {
+            "status": 400
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/v1/m/{mb}/{slot}/{dev:6}",
+          "body": {
+            "expiresAt": "{now+86400}",
+            "items": [
+              {
+                "v": 1,
+                "kind": "chunk",
+                "epoch": 0,
+                "seq": 0,
+                "n": "AAAAAAAAAAAAAAAA",
+                "c": "YQ"
+              }
+            ]
+          },
+          "expect": {
+            "status": 400
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/v1/m/{mb}/{slot}/{dev:7}",
+          "body": {
+            "expiresAt": "{now+86400}",
+            "items": [
+              {
+                "v": 1,
+                "kind": "state",
+                "epoch": 0,
+                "seq": 1,
+                "n": "AAAAAAAAAAAAAAAA",
+                "c": "YQ"
+              }
+            ]
+          },
+          "expect": {
+            "status": 400
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/v1/m/{mb}/{slot}/{dev:8}",
+          "body": {
+            "expiresAt": "{now+86400}",
+            "items": [
+              {
+                "v": 1,
+                "kind": "state",
+                "epoch": -1,
+                "seq": 0,
+                "n": "AAAAAAAAAAAAAAAA",
+                "c": "YQ"
+              }
+            ]
+          },
+          "expect": {
+            "status": 400
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/v1/m/{mb}/{slot}/{dev:9}",
+          "body": {
+            "expiresAt": "{now+86400}",
+            "items": [
+              {
+                "v": 1,
+                "kind": "state",
+                "epoch": 0,
+                "seq": 0,
+                "n": "AAAA+AAAAAAAAAAA",
+                "c": "YQ"
+              }
+            ]
+          },
+          "expect": {
+            "status": 400
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/v1/m/{mb}/{slot}/{dev:10}",
+          "body": {
+            "expiresAt": "{now+86400}",
+            "items": [
+              {
+                "v": 1,
+                "kind": "state",
+                "epoch": 0,
+                "seq": 0,
+                "n": "AAAAAAAAAAAAAAAA",
+                "c": ""
+              }
+            ]
+          },
+          "expect": {
+            "status": 400
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/v1/m/{mb}/{slot}/{dev:11}",
+          "body": {
+            "expiresAt": "soon",
+            "items": [
+              {
+                "v": 1,
+                "kind": "state",
+                "epoch": 0,
+                "seq": 0,
+                "n": "AAAAAAAAAAAAAAAA",
+                "c": "YQ"
+              }
+            ]
+          },
+          "expect": {
+            "status": 400
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/v1/m/short",
+          "expect": {
+            "status": 400
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/v1/elsewhere",
+          "expect": {
+            "status": 404
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/v1/m/{mb}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "devices": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "size limits are enforced",
+      "steps": [
+        {
+          "method": "POST",
+          "path": "/v1/m/{mb}/{slot}/{dev}",
+          "body": {
+            "expiresAt": "{now+86400}",
+            "items": [
+              {
+                "v": 1,
+                "kind": "state",
+                "epoch": 0,
+                "seq": 0,
+                "n": "AAAAAAAAAAAAAAAA",
+                "c": "{rep:A:8196}"
+              }
+            ]
+          },
+          "expect": {
+            "status": 413
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/v1/m/{mb}/{slot}/{dev:2}",
+          "body": {
+            "expiresAt": "{now+86400}",
+            "items": [
+              {
+                "v": 1,
+                "kind": "state",
+                "epoch": 0,
+                "seq": 0,
+                "n": "AAAAAAAAAAAAAAAA",
+                "c": "{rep:A:8192}"
+              }
+            ]
+          },
+          "expect": {
+            "status": 200
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/v1/m/{mb}/{slot}/{dev:3}",
+          "body": {
+            "expiresAt": "{now+86400}",
+            "items": [
+              {
+                "v": 1,
+                "kind": "chunk",
+                "epoch": 0,
+                "seq": 1,
+                "n": "AAAAAAAAAAAAAAAA",
+                "c": "{rep:A:49156}"
+              }
+            ]
+          },
+          "expect": {
+            "status": 413
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/v1/m/{mb}/{slot}/{dev:4}",
+          "body": {
+            "expiresAt": "{now+86400}",
+            "items": [
+              {
+                "v": 1,
+                "kind": "chunk",
+                "epoch": 0,
+                "seq": 1,
+                "n": "AAAAAAAAAAAAAAAA",
+                "c": "{rep:A:40000}"
+              },
+              {
+                "v": 1,
+                "kind": "chunk",
+                "epoch": 0,
+                "seq": 2,
+                "n": "AAAAAAAAAAAAAAAA",
+                "c": "{rep:A:40000}"
+              }
+            ]
+          },
+          "expect": {
+            "status": 413
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/v1/m/{mb}/{slot}/{dev:5}",
+          "body": {
+            "expiresAt": "{now+86400}",
+            "items": {
+              "$repeat": 257,
+              "item": {
+                "v": 1,
+                "kind": "chunk",
+                "epoch": 0,
+                "seq": "{i}",
+                "n": "AAAAAAAAAAAAAAAA",
+                "c": "YQ"
+              }
+            }
+          },
+          "expect": {
+            "status": 413
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/v1/m/{mb}/{slot}/{dev:6}",
+          "body": {
+            "expiresAt": "{now+86400}",
+            "items": {
+              "$repeat": 256,
+              "item": {
+                "v": 1,
+                "kind": "chunk",
+                "epoch": 0,
+                "seq": "{i}",
+                "n": "AAAAAAAAAAAAAAAA",
+                "c": "YQ"
+              }
+            }
+          },
+          "expect": {
+            "status": 200
+          }
+        }
+      ]
+    },
+    {
+      "name": "a mailbox holds at most 32 devices",
+      "steps": [
+        {
+          "repeat": 31,
+          "method": "POST",
+          "path": "/v1/m/{mb}/{slot}/{dev:i}",
+          "body": {
+            "expiresAt": "{now+86400}",
+            "items": [
+              {
+                "v": 1,
+                "kind": "state",
+                "epoch": 0,
+                "seq": 0,
+                "n": "AAAAAAAAAAAAAAAA",
+                "c": "YQ"
+              }
+            ]
+          },
+          "expect": {
+            "status": 200
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/v1/m/{mb}/{slot}/{dev:32}",
+          "body": {
+            "expiresAt": "{now+86400}",
+            "items": [
+              {
+                "v": 1,
+                "kind": "state",
+                "epoch": 0,
+                "seq": 0,
+                "n": "AAAAAAAAAAAAAAAA",
+                "c": "YQ"
+              }
+            ]
+          },
+          "expect": {
+            "status": 200
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/v1/m/{mb}/{slot}/{dev:33}",
+          "body": {
+            "expiresAt": "{now+86400}",
+            "items": [
+              {
+                "v": 1,
+                "kind": "state",
+                "epoch": 0,
+                "seq": 0,
+                "n": "AAAAAAAAAAAAAAAA",
+                "c": "YQ"
+              }
+            ]
+          },
+          "expect": {
+            "status": 413
+          }
+        }
+      ]
+    },
+    {
+      "name": "an expired mailbox reads as empty",
+      "virtualClockOnly": true,
+      "steps": [
+        {
+          "method": "POST",
+          "path": "/v1/m/{mb}/{slot}/{dev}",
+          "body": {
+            "expiresAt": "{now+3600}",
+            "items": [
+              {
+                "v": 1,
+                "kind": "state",
+                "epoch": 0,
+                "seq": 0,
+                "n": "AAAAAAAAAAAAAAAA",
+                "c": "YQ"
+              }
+            ]
+          },
+          "expect": {
+            "status": 200
+          }
+        },
+        {
+          "advance": 3601
+        },
+        {
+          "method": "GET",
+          "path": "/v1/m/{mb}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "devices": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "expiry is clamped to 60 days",
+      "virtualClockOnly": true,
+      "steps": [
+        {
+          "method": "POST",
+          "path": "/v1/m/{mb}/{slot}/{dev}",
+          "body": {
+            "expiresAt": "{now+31536000}",
+            "items": [
+              {
+                "v": 1,
+                "kind": "state",
+                "epoch": 0,
+                "seq": 0,
+                "n": "AAAAAAAAAAAAAAAA",
+                "c": "YQ"
+              }
+            ]
+          },
+          "expect": {
+            "status": 200
+          }
+        },
+        {
+          "advance": 5184001
+        },
+        {
+          "method": "GET",
+          "path": "/v1/m/{mb}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "devices": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "one device's day of chunks is at most 1 MiB",
+      "virtualClockOnly": true,
+      "steps": [
+        {
+          "repeat": 21,
+          "method": "POST",
+          "path": "/v1/m/{mb}/{slot}/{dev}",
+          "body": {
+            "expiresAt": "{now+86400}",
+            "items": [
+              {
+                "v": 1,
+                "kind": "chunk",
+                "epoch": 0,
+                "seq": "{i}",
+                "n": "AAAAAAAAAAAAAAAA",
+                "c": "{rep:A:49152}"
+              }
+            ]
+          },
+          "expect": {
+            "status": 200
+          },
+          "advanceAfter": 16
+        },
+        {
+          "method": "POST",
+          "path": "/v1/m/{mb}/{slot}/{dev}",
+          "body": {
+            "expiresAt": "{now+86400}",
+            "items": [
+              {
+                "v": 1,
+                "kind": "chunk",
+                "epoch": 0,
+                "seq": 22,
+                "n": "AAAAAAAAAAAAAAAA",
+                "c": "{rep:A:20000}"
+              }
+            ]
+          },
+          "expect": {
+            "status": 413
+          }
+        },
+        {
+          "advance": 16
+        },
+        {
+          "method": "POST",
+          "path": "/v1/m/{mb}/{slot}/{dev}",
+          "body": {
+            "expiresAt": "{now+86400}",
+            "items": [
+              {
+                "v": 1,
+                "kind": "chunk",
+                "epoch": 1,
+                "seq": 1,
+                "n": "AAAAAAAAAAAAAAAA",
+                "c": "{rep:A:20000}"
+              }
+            ]
+          },
+          "expect": {
+            "status": 200
+          }
+        }
+      ]
+    }
+  ]
+}

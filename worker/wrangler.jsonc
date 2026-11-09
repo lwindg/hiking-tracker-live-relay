@@ -1,0 +1,11 @@
+{
+  // Hiking Tracker live report relay. "Deploy to Cloudflare" creates the D1 database below and fills in its id.
+  "name": "ht-live-relay",
+  "main": "src/index.js",
+  "compatibility_date": "2026-10-01",
+  "d1_databases": [
+    { "binding": "DB", "database_name": "ht-live-relay", "migrations_dir": "migrations" }
+  ],
+  // Deletes expired mailboxes once a day (the free plan allows 5 cron triggers per account).
+  "triggers": { "crons": ["17 3 * * *"] }
+}

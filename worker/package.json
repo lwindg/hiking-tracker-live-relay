@@ -1,0 +1,15 @@
+{
+  "name": "ht-live-relay",
+  "private": true,
+  "license": "MIT",
+  "description": "Hiking Tracker live report relay (live-report-v1): stores sealed position reports, never decrypts them.",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --local --port 8787",
+    "deploy": "wrangler deploy",
+    "conformance": "node ../conformance/run.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "4.152.0"
+  }
+}
